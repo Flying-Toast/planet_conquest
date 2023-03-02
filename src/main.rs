@@ -1,4 +1,5 @@
 mod tiles;
+mod background;
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 
@@ -6,6 +7,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugin(tiles::TilingPlugin)
+        .add_plugin(background::BackgroundPlugin)
         .add_startup_system(setup)
         .add_system(move_player.at_start())
         .add_system(center_camera.at_start().after(move_player))
