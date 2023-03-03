@@ -1,8 +1,8 @@
-mod tiles;
 mod physics;
+mod tiles;
 use bevy::prelude::*;
+use physics::{MovementSpeed, Velocity};
 use tiles::{PlanetLocation, TransformLock};
-use physics::{Velocity, MovementSpeed};
 
 fn main() {
     App::new()
@@ -37,7 +37,9 @@ fn setup(
     commands
         .spawn(SpriteSheetBundle {
             texture_atlas: atlas_handle,
-            transform: Transform::default().with_scale(Vec3::splat(4.)).with_translation(Vec3::new(0., 0., 10.)),
+            transform: Transform::default()
+                .with_scale(Vec3::splat(4.))
+                .with_translation(Vec3::new(0., 0., 10.)),
             ..default()
         })
         .insert(Player)
@@ -48,6 +50,19 @@ fn setup(
             0.1,
             TimerMode::Repeating,
         )))
+        .insert(PlanetLocation::default());
+
+    let texture_handle = assets.load("rover.png");
+    let atlas = TextureAtlas::from_grid(texture_handle, Vec2::splat(16.), 1, 8, None, None);
+    let atlas_handle = texture_atlases.add(atlas);
+    commands
+        .spawn(SpriteSheetBundle {
+            texture_atlas: atlas_handle,
+            transform: Transform::default().with_scale(Vec3::splat(4.)).with_translation(Vec3::new(0., 0., 10.)),
+            ..default()
+        })
+        .insert(MovementSpeed(6.))
+        .insert(<Velocity as Default>::default())
         .insert(PlanetLocation::default());
 }
 
@@ -90,6 +105,7 @@ fn tick_animation_timers(
         if frame_timer.tick(time.delta()).just_finished() {
             let total_frames_per_row =
                 atlases.get(atlas_handle).unwrap().textures.len() / NUM_CARDINAL_DIRECTIONS;
+            assert!(total_frames_per_row > 1, "Non-animated (i.e. directional only) sprites shouldn't have an AnimationFrametimer component");
             let walking_frames_per_row = total_frames_per_row - 1;
             let current_col = sprite.index % total_frames_per_row;
             let current_row = sprite.index / total_frames_per_row;
@@ -140,7 +156,11 @@ fn sprites_face_velocity(
         target_row %= num_rows as i32;
 
         if current_row != target_row as usize {
-            sprite.index = target_row as usize * total_frames_per_row + 1;
+            if total_frames_per_row == 1 {
+                sprite.index = target_row as usize;
+            } else {
+                sprite.index = target_row as usize * total_frames_per_row + 1;
+            }
         }
     }
 }

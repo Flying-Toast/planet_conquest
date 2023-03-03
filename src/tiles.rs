@@ -9,12 +9,8 @@ impl Plugin for TilingPlugin {
         app.add_startup_system(spawn_earth)
             .add_system(load_unload_tiles)
             .add_system(retransform_tiles.after(load_unload_tiles))
-            .add_system(update_planet_locations.at_end())
-            .add_system(
-                propagate_planet_location_to_transform
-                    .at_end()
-                    .after(update_planet_locations),
-            );
+            .add_system(update_planet_locations)
+            .add_system(propagate_planet_location_to_transform.after(update_planet_locations));
     }
 }
 
@@ -223,9 +219,11 @@ fn update_planet_locations(mut locations: Query<&mut PlanetLocation>, map: Query
 
 fn propagate_planet_location_to_transform(
     mut q: Query<(&mut Transform, &PlanetLocation), Without<TransformLock>>,
+    player_location: Query<&PlanetLocation, With<Player>>,
 ) {
     for (mut transform, loc) in q.iter_mut() {
+        let transform_xy = loc.to_full_location() - player_location.single().to_full_location();
         //TODO: Doesnt this need to take stationary camera into account?
-        transform.translation = loc.to_full_location().extend(transform.translation.z);
+        transform.translation = transform_xy.extend(transform.translation.z);
     }
 }
