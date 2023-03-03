@@ -21,17 +21,19 @@ impl Plugin for TilingPlugin {
 /// Width/height of a map tile.
 pub const TILE_SIZE: f32 = 64.;
 /// Width/height of the entire planet's map, in tiles.
-const MAP_SIZE: usize = 10;
+const MAP_SIZE: usize = 100;
 
 #[derive(Copy, Clone, Debug)]
 enum TileKind {
     Grass,
+    WorldBorder,
 }
 
 impl TileKind {
     fn get_texture(&self, assets: &AssetServer) -> Handle<Image> {
         match self {
             Self::Grass => assets.load("grass.png"),
+            Self::WorldBorder => assets.load("world_border.png"),
         }
     }
 }
@@ -84,9 +86,15 @@ impl PlanetMap {
     }
 
     fn new_earth() -> Self {
-        Self {
-            tiles: [[(TileKind::Grass, None); MAP_SIZE]; MAP_SIZE],
+        let mut tiles = [[(TileKind::Grass, None); MAP_SIZE]; MAP_SIZE];
+        tiles[0] = [(TileKind::WorldBorder, None); MAP_SIZE];
+        tiles[tiles.len() - 1] = [(TileKind::WorldBorder, None); MAP_SIZE];
+        for mut row in tiles.iter_mut() {
+            row[0].0 = TileKind::WorldBorder;
+            row[row.len() - 1].0 = TileKind::WorldBorder;
         }
+
+        Self { tiles }
     }
 }
 

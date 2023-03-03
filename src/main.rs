@@ -37,7 +37,7 @@ fn setup(
     commands
         .spawn(SpriteSheetBundle {
             texture_atlas: atlas_handle,
-            transform: Transform::default().with_scale(Vec3::splat(4.)),
+            transform: Transform::default().with_scale(Vec3::splat(4.)).with_translation(Vec3::new(0., 0., 10.)),
             ..default()
         })
         .insert(Player)
