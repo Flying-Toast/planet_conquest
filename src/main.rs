@@ -1,15 +1,17 @@
 mod tiles;
+mod physics;
 use bevy::prelude::*;
 use tiles::{PlanetLocation, TransformLock};
+use physics::{Velocity, MovementSpeed};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .add_plugin(tiles::TilingPlugin)
         .add_plugin(shader_background::BackgroundPlugin)
+        .add_plugin(physics::PhysicsPlugin)
         .add_startup_system(setup)
         .add_system(update_player_velocity)
-        .add_system(move_planet_locations_from_velocity)
         .add_system(tick_animation_timers)
         .add_system(sprites_face_velocity.after(tick_animation_timers))
         .run();
@@ -17,12 +19,6 @@ fn main() {
 
 #[derive(Component)]
 struct Player;
-
-#[derive(Component, Default)]
-struct Velocity(Vec2);
-
-#[derive(Component, Deref, DerefMut)]
-struct MovementSpeed(f32);
 
 #[derive(Component, Deref, DerefMut)]
 struct AnimationFrameTimer(Timer);
@@ -53,15 +49,6 @@ fn setup(
             TimerMode::Repeating,
         )))
         .insert(PlanetLocation::default());
-}
-
-fn move_planet_locations_from_velocity(
-    time: Res<Time>,
-    mut q: Query<(&mut PlanetLocation, &Velocity)>,
-) {
-    for (mut loc, vel) in q.iter_mut() {
-        loc.subtile += vel.0 * time.delta_seconds();
-    }
 }
 
 fn update_player_velocity(
