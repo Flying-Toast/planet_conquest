@@ -224,7 +224,6 @@ fn propagate_planet_location_to_transform(
 ) {
     for (mut transform, loc) in q.iter_mut() {
         let transform_xy = loc.to_full_location() - camera_origin.single().to_full_location();
-        //TODO: Doesnt this need to take stationary camera into account?
         transform.translation = transform_xy.extend(transform.translation.z);
     }
 }
