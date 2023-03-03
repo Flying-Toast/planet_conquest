@@ -4,51 +4,156 @@ use tiles::{PlanetLocation, TransformLock};
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .add_plugin(tiles::TilingPlugin)
         .add_plugin(shader_background::BackgroundPlugin)
         .add_startup_system(setup)
-        .add_system(move_player)
+        .add_system(update_player_velocity)
+        .add_system(move_planet_locations_from_velocity)
+        .add_system(tick_animation_timers)
+        .add_system(sprites_face_velocity.after(tick_animation_timers))
         .run();
 }
 
 #[derive(Component)]
 struct Player;
 
+#[derive(Component, Default)]
+struct Velocity(Vec2);
+
 #[derive(Component, Deref, DerefMut)]
 struct MovementSpeed(f32);
 
-fn setup(mut commands: Commands, assets: Res<AssetServer>) {
+#[derive(Component, Deref, DerefMut)]
+struct AnimationFrameTimer(Timer);
+
+fn setup(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+) {
     commands.spawn(Camera2dBundle { ..default() });
+
+    let texture_handle = assets.load("dude.png");
+    let atlas = TextureAtlas::from_grid(texture_handle, Vec2::splat(16.), 5, 8, None, None);
+    let atlas_handle = texture_atlases.add(atlas);
+
     commands
-        .spawn(SpriteBundle {
-            texture: assets.load("dude.png"),
-            transform: Transform::default().with_scale(Vec3::splat(0.6)),
+        .spawn(SpriteSheetBundle {
+            texture_atlas: atlas_handle,
+            transform: Transform::default().with_scale(Vec3::splat(4.)),
             ..default()
         })
         .insert(Player)
         .insert(TransformLock)
-        .insert(MovementSpeed(0.1))
+        .insert(<Velocity as Default>::default())
+        .insert(MovementSpeed(2.))
+        .insert(AnimationFrameTimer(Timer::from_seconds(
+            0.1,
+            TimerMode::Repeating,
+        )))
         .insert(PlanetLocation::default());
 }
 
-fn move_player(
-    mut q: Query<(&mut PlanetLocation, &MovementSpeed), With<Player>>,
+fn move_planet_locations_from_velocity(
+    time: Res<Time>,
+    mut q: Query<(&mut PlanetLocation, &Velocity)>,
+) {
+    for (mut loc, vel) in q.iter_mut() {
+        loc.subtile += vel.0 * time.delta_seconds();
+    }
+}
+
+fn update_player_velocity(
+    mut q: Query<(&mut Velocity, &MovementSpeed), With<Player>>,
     keyboard: Res<Input<KeyCode>>,
 ) {
-    let (mut loc, &MovementSpeed(player_speed)) = q.single_mut();
-    let mut vel = Vec2::ZERO;
+    let (mut player_velocity, &MovementSpeed(player_speed)) = q.single_mut();
+    let mut new_velocity = Vec2::ZERO;
+
     if keyboard.pressed(KeyCode::W) {
-        vel.y += 1.;
+        new_velocity.y += 1.;
     }
     if keyboard.pressed(KeyCode::A) {
-        vel.x -= 1.;
+        new_velocity.x -= 1.;
     }
     if keyboard.pressed(KeyCode::S) {
-        vel.y -= 1.;
+        new_velocity.y -= 1.;
     }
     if keyboard.pressed(KeyCode::D) {
-        vel.x += 1.;
+        new_velocity.x += 1.;
     }
-    loc.subtile += vel.normalize_or_zero() * player_speed;
+
+    player_velocity.0 = new_velocity.normalize_or_zero() * player_speed;
+}
+
+/// len([North, Northeast, ...])
+const NUM_CARDINAL_DIRECTIONS: usize = 8;
+
+fn tick_animation_timers(
+    time: Res<Time>,
+    mut q: Query<(
+        &mut AnimationFrameTimer,
+        &Handle<TextureAtlas>,
+        &mut TextureAtlasSprite,
+    )>,
+    atlases: Res<Assets<TextureAtlas>>,
+) {
+    for (mut frame_timer, atlas_handle, mut sprite) in q.iter_mut() {
+        if frame_timer.tick(time.delta()).just_finished() {
+            let total_frames_per_row =
+                atlases.get(atlas_handle).unwrap().textures.len() / NUM_CARDINAL_DIRECTIONS;
+            let walking_frames_per_row = total_frames_per_row - 1;
+            let current_col = sprite.index % total_frames_per_row;
+            let current_row = sprite.index / total_frames_per_row;
+
+            sprite.index = 1
+                + (current_row * total_frames_per_row)
+                + ((current_col + 1) % walking_frames_per_row);
+        }
+    }
+}
+
+/// Orients sprites with spritesheets so that they face their velocity's cardinal direction
+fn sprites_face_velocity(
+    mut q: Query<(&Velocity, &Handle<TextureAtlas>, &mut TextureAtlasSprite)>,
+    atlases: Res<Assets<TextureAtlas>>,
+) {
+    for (&Velocity(vel), atlas_handle, mut sprite) in q.iter_mut() {
+        let num_sprites = atlases.get(atlas_handle).unwrap().textures.len();
+        let total_frames_per_row = num_sprites / NUM_CARDINAL_DIRECTIONS;
+        let num_rows = num_sprites / total_frames_per_row;
+        let current_row = sprite.index / total_frames_per_row;
+
+        let mut target_row;
+        if vel == Vec2::ZERO {
+            sprite.index = current_row * total_frames_per_row;
+            continue;
+        } else if vel.y > 0. {
+            if vel.x == 0. || vel.x == -0. {
+                target_row = 6;
+            } else if vel.x < 0. {
+                target_row = 7;
+            } else {
+                target_row = 5;
+            }
+        } else if vel.y < 0. {
+            if vel.x == 0. || vel.x == -0. {
+                target_row = 2;
+            } else if vel.x < 0. {
+                target_row = 1;
+            } else {
+                target_row = 3;
+            }
+        } else if vel.x < 0. {
+            target_row = 0;
+        } else {
+            target_row = 4;
+        }
+        target_row %= num_rows as i32;
+
+        if current_row != target_row as usize {
+            sprite.index = target_row as usize * total_frames_per_row + 1;
+        }
+    }
 }

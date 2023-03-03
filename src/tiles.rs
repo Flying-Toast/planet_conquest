@@ -143,7 +143,8 @@ fn load_unload_tiles(
                     .spawn(SpriteBundle {
                         texture: map.tiles[y][x].0.get_texture(&*assets),
                         transform: Transform::default()
-                            .with_translation(camera_relative_translation.extend(0.)),
+                            .with_translation(camera_relative_translation.extend(0.))
+                            .with_scale(Vec3::splat(4.)),
                         ..default()
                     })
                     .insert(MapTile(x, y))
