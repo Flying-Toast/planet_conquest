@@ -1,4 +1,3 @@
-use crate::Player;
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 
@@ -56,6 +55,12 @@ impl Default for PlanetLocation {
     }
 }
 
+/// The entity with this component will have its transform stay centered in the screen.
+/// Only one entity can have this component at a time.
+/// It needs to also have a PlanetLocation.
+#[derive(Component)]
+pub struct CameraFollow;
+
 /// Tiles of a planet
 #[derive(Component)]
 pub struct PlanetMap {
@@ -98,10 +103,6 @@ impl PlanetMap {
 #[derive(Component)]
 struct MapTile(usize, usize);
 
-/// Prevents PlanetLocation from propogating to this entity's Transform.
-#[derive(Component)]
-pub struct TransformLock;
-
 /// Spawns sprites for tiles within render distance, and deletes offscreen sprites
 fn load_unload_tiles(
     camera_query: Query<&Camera>,
@@ -109,9 +110,9 @@ fn load_unload_tiles(
     mut map: Query<&mut PlanetMap>,
     assets: Res<AssetServer>,
     mut commands: Commands,
-    player_loc: Query<&PlanetLocation, With<Player>>,
+    camera_origin: Query<&PlanetLocation, With<CameraFollow>>,
 ) {
-    let origin_loc = player_loc.single().to_full_location();
+    let origin_loc = camera_origin.single().to_full_location();
     let camera = camera_query.single();
     let viewport_size = camera.logical_viewport_size().unwrap();
     let camera_rect = Rect::from_center_size(Vec2::ZERO, viewport_size);
@@ -167,12 +168,12 @@ fn get_transform_for_tile(mt: &MapTile, player_origin: Vec2) -> Vec2 {
 
 fn retransform_tiles(
     mut tiles: Query<(&mut Transform, &MapTile)>,
-    player_loc: Query<&PlanetLocation, With<Player>>,
+    camera_origin: Query<&PlanetLocation, With<CameraFollow>>,
 ) {
-    let player_loc = player_loc.single().to_full_location();
+    let camera_origin = camera_origin.single().to_full_location();
 
     for (mut transform, mt) in tiles.iter_mut() {
-        transform.translation = get_transform_for_tile(mt, player_loc).extend(0.);
+        transform.translation = get_transform_for_tile(mt, camera_origin).extend(0.);
     }
 }
 
@@ -218,11 +219,11 @@ fn update_planet_locations(mut locations: Query<&mut PlanetLocation>, map: Query
 }
 
 fn propagate_planet_location_to_transform(
-    mut q: Query<(&mut Transform, &PlanetLocation), Without<TransformLock>>,
-    player_location: Query<&PlanetLocation, With<Player>>,
+    mut q: Query<(&mut Transform, &PlanetLocation), Without<CameraFollow>>,
+    camera_origin: Query<&PlanetLocation, With<CameraFollow>>,
 ) {
     for (mut transform, loc) in q.iter_mut() {
-        let transform_xy = loc.to_full_location() - player_location.single().to_full_location();
+        let transform_xy = loc.to_full_location() - camera_origin.single().to_full_location();
         //TODO: Doesnt this need to take stationary camera into account?
         transform.translation = transform_xy.extend(transform.translation.z);
     }

@@ -2,7 +2,7 @@ mod physics;
 mod tiles;
 use bevy::prelude::*;
 use physics::{MovementSpeed, Velocity};
-use tiles::{PlanetLocation, TransformLock};
+use tiles::{CameraFollow, PlanetLocation};
 
 fn main() {
     App::new()
@@ -43,7 +43,7 @@ fn setup(
             ..default()
         })
         .insert(Player)
-        .insert(TransformLock)
+        .insert(CameraFollow)
         .insert(<Velocity as Default>::default())
         .insert(MovementSpeed(2.))
         .insert(AnimationFrameTimer(Timer::from_seconds(
@@ -58,7 +58,9 @@ fn setup(
     commands
         .spawn(SpriteSheetBundle {
             texture_atlas: atlas_handle,
-            transform: Transform::default().with_scale(Vec3::splat(4.)).with_translation(Vec3::new(0., 0., 10.)),
+            transform: Transform::default()
+                .with_scale(Vec3::splat(4.))
+                .with_translation(Vec3::new(0., 0., 10.)),
             ..default()
         })
         .insert(MovementSpeed(6.))
