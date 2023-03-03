@@ -1,3 +1,4 @@
+use crate::Player;
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
 
@@ -6,7 +7,14 @@ pub struct TilingPlugin;
 impl Plugin for TilingPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(spawn_earth)
-            .add_system(load_unload_tiles.at_start());
+            .add_system(load_unload_tiles)
+            .add_system(retransform_tiles.after(load_unload_tiles))
+            .add_system(update_planet_locations.at_end())
+            .add_system(
+                propagate_planet_location_to_transform
+                    .at_end()
+                    .after(update_planet_locations),
+            );
     }
 }
 
@@ -15,7 +23,7 @@ pub const TILE_SIZE: f32 = 64.;
 /// Width/height of the entire planet's map, in tiles.
 const MAP_SIZE: usize = 10;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 enum TileKind {
     Grass,
 }
@@ -24,6 +32,28 @@ impl TileKind {
     fn get_texture(&self, assets: &AssetServer) -> Handle<Image> {
         match self {
             Self::Grass => assets.load("grass.png"),
+        }
+    }
+}
+
+/// A location of something, within a tile of a planet
+#[derive(Component, Debug)]
+pub struct PlanetLocation {
+    pub tile: (usize, usize),
+    pub subtile: Vec2,
+}
+
+impl PlanetLocation {
+    fn to_full_location(&self) -> Vec2 {
+        (self.subtile + Vec2::new(self.tile.0 as f32, self.tile.1 as f32)) * TILE_SIZE
+    }
+}
+
+impl Default for PlanetLocation {
+    fn default() -> Self {
+        Self {
+            tile: (0, 0),
+            subtile: Vec2::ZERO,
         }
     }
 }
@@ -64,17 +94,23 @@ impl PlanetMap {
 #[derive(Component)]
 struct MapTile(usize, usize);
 
+/// Prevents PlanetLocation from propogating to this entity's Transform.
+#[derive(Component)]
+pub struct TransformLock;
+
 /// Spawns sprites for tiles within render distance, and deletes offscreen sprites
 fn load_unload_tiles(
-    camera_query: Query<(&Transform, &Camera)>,
+    camera_query: Query<&Camera>,
     existing_tiles: Query<(Entity, &Transform, &MapTile)>,
     mut map: Query<&mut PlanetMap>,
     assets: Res<AssetServer>,
     mut commands: Commands,
+    player_loc: Query<&PlanetLocation, With<Player>>,
 ) {
-    let (cam_transform, camera) = camera_query.single();
+    let origin_loc = player_loc.single().to_full_location();
+    let camera = camera_query.single();
     let viewport_size = camera.logical_viewport_size().unwrap();
-    let camera_rect = Rect::from_center_size(cam_transform.translation.xy(), viewport_size);
+    let camera_rect = Rect::from_center_size(Vec2::ZERO, viewport_size);
 
     let mut map = map.single_mut();
     // despawn offscreen tiles
@@ -89,8 +125,8 @@ fn load_unload_tiles(
     }
 
     // spawn new tiles
-    let min_onscreen = (camera_rect.min / TILE_SIZE).ceil();
-    let max_onscreen = (camera_rect.max / TILE_SIZE).ceil();
+    let min_onscreen = ((camera_rect.min + origin_loc) / TILE_SIZE).ceil();
+    let max_onscreen = ((camera_rect.max + origin_loc) / TILE_SIZE).ceil();
 
     for y in f32::max(min_onscreen.y - 1., 0.) as usize..=max_onscreen.y as usize {
         if y >= MAP_SIZE {
@@ -101,14 +137,13 @@ fn load_unload_tiles(
                 break;
             }
             if !map.tile_has_entity(x, y) {
+                let camera_relative_translation =
+                    get_transform_for_tile(&MapTile(x, y), origin_loc);
                 let tile_ent = commands
                     .spawn(SpriteBundle {
                         texture: map.tiles[y][x].0.get_texture(&*assets),
-                        transform: Transform::default().with_translation(Vec3::new(
-                            x as f32 * TILE_SIZE,
-                            y as f32 * TILE_SIZE,
-                            0.,
-                        )),
+                        transform: Transform::default()
+                            .with_translation(camera_relative_translation.extend(0.)),
                         ..default()
                     })
                     .insert(MapTile(x, y))
@@ -119,6 +154,69 @@ fn load_unload_tiles(
     }
 }
 
+fn get_transform_for_tile(mt: &MapTile, player_origin: Vec2) -> Vec2 {
+    let tile_location = Vec2::new(mt.0 as f32, mt.1 as f32) * TILE_SIZE;
+
+    tile_location - player_origin
+}
+
+fn retransform_tiles(
+    mut tiles: Query<(&mut Transform, &MapTile)>,
+    player_loc: Query<&PlanetLocation, With<Player>>,
+) {
+    let player_loc = player_loc.single().to_full_location();
+
+    for (mut transform, mt) in tiles.iter_mut() {
+        transform.translation = get_transform_for_tile(mt, player_loc).extend(0.);
+    }
+}
+
 fn spawn_earth(mut commands: Commands) {
     commands.spawn(PlanetMap::new_earth());
+}
+
+fn update_planet_locations(mut locations: Query<&mut PlanetLocation>, map: Query<&PlanetMap>) {
+    let map = map.single();
+
+    for mut pl in locations.iter_mut() {
+        let new_subtile = pl.subtile.abs().fract() * pl.subtile.signum();
+        let dtile = (pl.subtile.abs() - new_subtile.abs()) * pl.subtile.signum();
+
+        if dtile.x < 0. {
+            pl.tile.0 = pl.tile.0.saturating_sub(dtile.x.abs() as usize);
+        } else {
+            pl.tile.0 += dtile.x.abs() as usize;
+        }
+
+        if dtile.y < 0. {
+            pl.tile.1 = pl.tile.1.saturating_sub(dtile.y.abs() as usize);
+        } else {
+            pl.tile.1 += dtile.y.abs() as usize;
+        }
+
+        pl.subtile = new_subtile;
+
+        if pl.tile.0 == 0 {
+            pl.subtile.x = pl.subtile.x.max(0.);
+        } else if pl.to_full_location().x >= (map.size() - 1) as f32 * TILE_SIZE {
+            pl.tile.0 = map.size() - 1;
+            pl.subtile.x = 0.;
+        }
+
+        if pl.tile.1 == 0 {
+            pl.subtile.y = pl.subtile.y.max(0.);
+        } else if pl.to_full_location().y >= (map.size() - 1) as f32 * TILE_SIZE {
+            pl.tile.1 = map.size() - 1;
+            pl.subtile.y = 0.;
+        }
+    }
+}
+
+fn propagate_planet_location_to_transform(
+    mut q: Query<(&mut Transform, &PlanetLocation), Without<TransformLock>>,
+) {
+    for (mut transform, loc) in q.iter_mut() {
+        //TODO: Doesnt this need to take stationary camera into account?
+        transform.translation = loc.to_full_location().extend(transform.translation.z);
+    }
 }

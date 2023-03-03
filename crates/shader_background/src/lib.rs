@@ -71,7 +71,7 @@ fn update_bg(
     let (mut bg_transform, Mesh2dHandle(mesh_handle), material_handle) = bg_query.single_mut();
 
     *meshes.get_mut(mesh_handle).unwrap() = Mesh::from(shape::Quad::new(viewport_size));
-    bg_transform.translation = camera_transform.translation.xy().extend(-1.);
+    bg_transform.translation = camera_transform.translation.xy().extend(-0.001);
 
     materials.get_mut(material_handle).unwrap().time = time.raw_elapsed_seconds_wrapped();
 }
