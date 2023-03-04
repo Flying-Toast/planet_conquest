@@ -11,6 +11,7 @@ impl Plugin for TilingPlugin {
             .add_system(load_unload_tiles)
             .add_system(retransform_tiles.after(load_unload_tiles))
             .add_system(update_planet_locations)
+            .add_system(cam_follow_to_origin)
             .add_system(propagate_planet_location_to_transform.after(update_planet_locations));
     }
 }
@@ -36,7 +37,7 @@ impl TileKind {
 }
 
 /// A location of something, within a tile of a planet
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Clone)]
 pub struct PlanetLocation {
     pub tile: (usize, usize),
     pub subtile: Vec2,
@@ -121,6 +122,22 @@ impl LocationTable {
     pub fn ents_in_tile(&self, tile_loc: (usize, usize)) -> &[Entity] {
         self.map.get(&tile_loc).map(Vec::as_slice).unwrap_or(&[])
     }
+
+    pub fn ents_in_tile_and_neighbors<'a>(
+        &'a self,
+        tile_loc: (usize, usize),
+        neighbor_padding: usize,
+    ) -> impl Iterator<Item = Entity> + 'a {
+        let tile_x = tile_loc.0 as i32;
+        let tile_y = tile_loc.1 as i32;
+        let neighbor_padding = neighbor_padding as i32;
+        (-neighbor_padding..=neighbor_padding)
+            .map(move |x| (-neighbor_padding..=neighbor_padding).map(move |y| (x, y)))
+            .flatten()
+            .map(move |(x, y)| self.ents_in_tile(((tile_x + x) as usize, (tile_y + y) as usize)))
+            .flatten()
+            .cloned()
+    }
 }
 
 fn fill_location_table(
@@ -133,6 +150,12 @@ fn fill_location_table(
     for (entity, loc) in ents.iter() {
         table.entry(loc.tile).or_insert(Vec::new()).push(entity);
     }
+}
+
+fn cam_follow_to_origin(mut q: Query<&mut Transform, With<CameraFollow>>) {
+    let trans = &mut q.single_mut().translation;
+    trans.x = 0.;
+    trans.y = 0.;
 }
 
 /// Spawns sprites for tiles within render distance, and deletes offscreen sprites

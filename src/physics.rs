@@ -9,6 +9,12 @@ pub struct Velocity(pub Vec2);
 #[derive(Component, Deref, DerefMut)]
 pub struct MovementSpeed(pub f32);
 
+impl Default for MovementSpeed {
+    fn default() -> Self {
+        Self(1.)
+    }
+}
+
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
         app.add_system(move_planet_locations_from_velocity);
