@@ -1,11 +1,13 @@
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 pub struct TilingPlugin;
 
 impl Plugin for TilingPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(spawn_earth)
+            .add_system(fill_location_table.at_start())
             .add_system(load_unload_tiles)
             .add_system(retransform_tiles.after(load_unload_tiles))
             .add_system(update_planet_locations)
@@ -63,12 +65,12 @@ pub struct CameraFollow;
 
 /// Tiles of a planet
 #[derive(Component)]
-pub struct PlanetMap {
+struct PlanetMap {
     tiles: [[(TileKind, Option<Entity>); MAP_SIZE]; MAP_SIZE],
 }
 
 impl PlanetMap {
-    pub fn size(&self) -> usize {
+    fn size(&self) -> usize {
         MAP_SIZE
     }
 
@@ -102,6 +104,36 @@ impl PlanetMap {
 /// Marker component for map tile sprites
 #[derive(Component)]
 struct MapTile(usize, usize);
+
+/// An efficient way to get all the entities whose PlanetLocation is in a given tile.
+#[derive(Component)]
+pub struct LocationTable {
+    map: HashMap<(usize, usize), Vec<Entity>>,
+}
+
+impl LocationTable {
+    fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn ents_in_tile(&self, tile_loc: (usize, usize)) -> &[Entity] {
+        self.map.get(&tile_loc).map(Vec::as_slice).unwrap_or(&[])
+    }
+}
+
+fn fill_location_table(
+    mut table: Query<&mut LocationTable>,
+    ents: Query<(Entity, &PlanetLocation)>,
+) {
+    let table = &mut table.single_mut().map;
+    table.clear();
+
+    for (entity, loc) in ents.iter() {
+        table.entry(loc.tile).or_insert(Vec::new()).push(entity);
+    }
+}
 
 /// Spawns sprites for tiles within render distance, and deletes offscreen sprites
 fn load_unload_tiles(
@@ -178,7 +210,9 @@ fn retransform_tiles(
 }
 
 fn spawn_earth(mut commands: Commands) {
-    commands.spawn(PlanetMap::new_earth());
+    commands
+        .spawn(PlanetMap::new_earth())
+        .insert(LocationTable::new());
 }
 
 fn update_planet_locations(mut locations: Query<&mut PlanetLocation>, map: Query<&PlanetMap>) {
