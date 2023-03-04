@@ -12,7 +12,7 @@ impl Plugin for BackgroundPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(Material2dPlugin::<BackgroundMaterial>::default())
             .add_startup_system(create_bg)
-            .add_system(update_bg.at_end());
+            .add_system(update_bg);
     }
 }
 
