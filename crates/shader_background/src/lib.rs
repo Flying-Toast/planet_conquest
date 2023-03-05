@@ -23,8 +23,6 @@ struct BackgroundMaterial {
     base_color: Color,
     #[uniform(0)]
     noise_color: Color,
-    #[uniform(0)]
-    time: f32,
 }
 
 impl Material2d for BackgroundMaterial {
@@ -44,11 +42,10 @@ fn create_bg(
     commands
         .spawn(MaterialMesh2dBundle {
             mesh: meshes.add(Mesh::from(shape::Quad::default())).into(),
-            transform: Transform::default().with_translation(Vec3::new(0., 0., -1.)),
+            transform: Transform::default().with_translation(Vec3::new(0., 0., -0.001)),
             material: materials.add(BackgroundMaterial {
                 base_color: Color::rgb(0.168, 0.094, 0.376),
                 noise_color: Color::rgb(0.2, 0.243, 0.478),
-                time: 0.,
             }),
             ..default()
         })
@@ -56,22 +53,27 @@ fn create_bg(
 }
 
 fn update_bg(
-    mut bg_query: Query<
-        (&mut Transform, &Mesh2dHandle, &Handle<BackgroundMaterial>),
-        (With<Background>, Without<Camera>),
-    >,
-    camera_query: Query<(&Transform, &Camera)>,
+    mut bg_query: Query<(&mut Transform, &Mesh2dHandle), (With<Background>, Without<Camera>)>,
+    camera_query: Query<(
+        &Transform,
+        &Camera,
+        ChangeTrackers<Transform>,
+        ChangeTrackers<Camera>,
+    )>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<BackgroundMaterial>>,
-    time: Res<Time>,
 ) {
-    let (camera_transform, camera) = camera_query.single();
+    let (camera_transform, camera, cam_transform_tracker, camera_tracker) = camera_query.single();
     let viewport_size = camera.logical_viewport_size().unwrap();
 
-    let (mut bg_transform, Mesh2dHandle(mesh_handle), material_handle) = bg_query.single_mut();
+    let (mut bg_transform, Mesh2dHandle(mesh_handle)) = bg_query.single_mut();
 
-    *meshes.get_mut(mesh_handle).unwrap() = Mesh::from(shape::Quad::new(viewport_size));
-    bg_transform.translation = camera_transform.translation.xy().extend(-0.001);
+    if camera_tracker.is_changed() {
+        *meshes.get_mut(mesh_handle).unwrap() = Mesh::from(shape::Quad::new(viewport_size));
+    }
 
-    materials.get_mut(material_handle).unwrap().time = time.raw_elapsed_seconds_wrapped();
+    if cam_transform_tracker.is_changed() {
+        let cam_xy = camera_transform.translation.xy();
+        bg_transform.translation.x = cam_xy.x;
+        bg_transform.translation.y = cam_xy.y;
+    }
 }

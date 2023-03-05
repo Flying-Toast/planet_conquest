@@ -1,7 +1,9 @@
+#import bevy_sprite::mesh2d_types
+#import bevy_sprite::mesh2d_view_bindings
+
 struct BackgroundMaterial {
 	base_color: vec4<f32>,
 	noise_color: vec4<f32>,
-	time: f32,
 }
 
 @group(1) @binding(0)
@@ -81,9 +83,9 @@ fn noise(coord: vec3<f32>) -> f32 {
 
 @fragment
 fn fragment(
-	#import bevy_pbr::mesh_vertex_output
+	#import bevy_sprite::mesh2d_vertex_output
 ) -> @location(0) vec4<f32> {
-	let noise = noise(vec3(uv * 10., material.time * 0.3));
+	let noise = noise(vec3(uv * 10., globals.time * 0.3));
 	let c = vec3(material.noise_color.rgb * noise) + material.base_color.rgb;
 	return vec4(c, 1.);
 }
