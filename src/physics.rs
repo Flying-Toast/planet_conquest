@@ -17,7 +17,7 @@ impl Default for MovementSpeed {
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(move_planet_locations_from_velocity);
+        app.add_system(move_planet_locations_from_velocity.at_start());
     }
 }
 
