@@ -1,13 +1,11 @@
 use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
-use std::collections::HashMap;
 
 pub struct TilingPlugin;
 
 impl Plugin for TilingPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(spawn_earth)
-            .add_system(fill_location_table.at_start())
             .add_system(load_unload_tiles)
             .add_system(retransform_tiles.after(load_unload_tiles))
             .add_system(update_planet_locations)
@@ -40,6 +38,7 @@ impl TileKind {
 #[derive(Component, Debug, Clone)]
 pub struct PlanetLocation {
     pub tile: (usize, usize),
+    /// Between 0.0 and 1.0
     pub subtile: Vec2,
 }
 
@@ -105,52 +104,6 @@ impl PlanetMap {
 /// Marker component for map tile sprites
 #[derive(Component)]
 struct MapTile(usize, usize);
-
-/// An efficient way to get all the entities whose PlanetLocation is in a given tile.
-#[derive(Component)]
-pub struct LocationTable {
-    map: HashMap<(usize, usize), Vec<Entity>>,
-}
-
-impl LocationTable {
-    fn new() -> Self {
-        Self {
-            map: HashMap::new(),
-        }
-    }
-
-    pub fn ents_in_tile(&self, tile_loc: (usize, usize)) -> &[Entity] {
-        self.map.get(&tile_loc).map(Vec::as_slice).unwrap_or(&[])
-    }
-
-    pub fn ents_in_tile_and_neighbors<'a>(
-        &'a self,
-        tile_loc: (usize, usize),
-        neighbor_padding: usize,
-    ) -> impl Iterator<Item = Entity> + 'a {
-        let tile_x = tile_loc.0 as i32;
-        let tile_y = tile_loc.1 as i32;
-        let neighbor_padding = neighbor_padding as i32;
-        (-neighbor_padding..=neighbor_padding)
-            .map(move |x| (-neighbor_padding..=neighbor_padding).map(move |y| (x, y)))
-            .flatten()
-            .map(move |(x, y)| self.ents_in_tile(((tile_x + x) as usize, (tile_y + y) as usize)))
-            .flatten()
-            .cloned()
-    }
-}
-
-fn fill_location_table(
-    mut table: Query<&mut LocationTable>,
-    ents: Query<(Entity, &PlanetLocation)>,
-) {
-    let table = &mut table.single_mut().map;
-    table.clear();
-
-    for (entity, loc) in ents.iter() {
-        table.entry(loc.tile).or_insert(Vec::new()).push(entity);
-    }
-}
 
 fn cam_follow_to_origin(mut q: Query<&mut Transform, With<CameraFollow>>) {
     let trans = &mut q.single_mut().translation;
@@ -233,9 +186,7 @@ fn retransform_tiles(
 }
 
 fn spawn_earth(mut commands: Commands) {
-    commands
-        .spawn(PlanetMap::new_earth())
-        .insert(LocationTable::new());
+    commands.spawn(PlanetMap::new_earth());
 }
 
 fn update_planet_locations(mut locations: Query<&mut PlanetLocation>, map: Query<&PlanetMap>) {

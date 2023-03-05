@@ -1,6 +1,6 @@
 use crate::{
     physics::{MovementSpeed, Velocity},
-    tiles::{LocationTable, PlanetLocation},
+    tiles::PlanetLocation,
     CameraFollow, Controllable, Player,
 };
 use bevy::prelude::*;
@@ -31,33 +31,30 @@ fn enter_or_exit_vehicles(
     player_query: Query<(Entity, &PlanetLocation, Option<&Controllable>), With<Player>>,
     controllable_vehicle_query: Query<Entity, (With<Controllable>, With<Vehicle>, Without<Player>)>,
     keyboard: Res<Input<KeyCode>>,
-    location_table: Query<&LocationTable>,
-    mut vehicle_query: Query<&PlanetLocation, With<Vehicle>>,
+    vehicle_query: Query<(Entity, &PlanetLocation), With<Vehicle>>,
     mut commands: Commands,
 ) {
     if !keyboard.just_pressed(KeyCode::Space) {
         return;
     }
 
-    let location_table = location_table.single();
     let (player_entity, player_location, player_controllable) = player_query.single();
 
     if player_controllable.is_some() {
         // Player is the current Controllable - not in a vehicle
-        for vehicle_ent in location_table.ents_in_tile_and_neighbors(player_location.tile, 2) {
-            if let Ok(vehicle_loc) = vehicle_query.get_mut(vehicle_ent) {
-                commands
-                    .entity(player_entity)
-                    .remove::<CameraFollow>()
-                    .insert(Visibility::INVISIBLE)
-                    .insert(vehicle_loc.clone())
-                    .remove::<Controllable>();
-                commands
-                    .entity(vehicle_ent)
-                    .insert(CameraFollow)
-                    .insert(Controllable);
-                break;
-            }
+        for (vehicle_ent, vehicle_loc) in vehicle_query.iter() {
+            commands
+                .entity(player_entity)
+                .remove::<CameraFollow>()
+                .insert(Visibility::INVISIBLE)
+                .insert(vehicle_loc.clone())
+                .remove::<Controllable>();
+            commands
+                .entity(vehicle_ent)
+                .insert(CameraFollow)
+                .insert(Controllable);
+            //TODO: get in the closest vehicle
+            break;
         }
     } else {
         // Player is not Controllable - already in a vehicle
